@@ -1,59 +1,80 @@
 import numpy as np
 import pandas as pd
+import joblib
+import os
 
-np.random.seed(42)
+# =====================================================
+# FIX BASE DIRECTORY (MOVE UP FROM data_generation/)
+# =====================================================
+BASE_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..")
+)
 
-N_SAMPLES = 20  # small demo-friendly CSV
+PREPROC_PATH = os.path.join(
+    BASE_DIR, "artifacts", "paysim_preproc.joblib"
+)
 
-# ⚠️ Must match PaySim Stage-2 feature order
-FEATURES = [
-    "amount",
-    "hour",
-    "dayofweek",
-    "is_weekend",
-    "rolling_mean_amount",
-    "rolling_std_amount",
-    "cumulative_amount",
-    "balance_mismatch_rate",
-    "amt_vs_recent_avg",
-    "txn_velocity_5",
-    "errorbalanceorig",
-    "errorbalancedest",
-    "upi_type_upi_payment",
-    "upi_type_upi_transfer"
-]
+# =====================================================
+# LOAD TRAINED FEATURE ORDER
+# =====================================================
+paysim_preproc = joblib.load(PREPROC_PATH)
+FEATURES = list(paysim_preproc.feature_names_in_)
 
-data = []
+# =====================================================
+# CONFIG
+# =====================================================
+N_ROWS = 50
+FRAUD_RATIO = 0.2   # 2% fraud
 
-for i in range(N_SAMPLES):
-    is_fraud_like = i % 5 == 0  # every 5th transaction is suspicious
+rng = np.random.default_rng(42)
+
+# =====================================================
+# DATA GENERATION
+# =====================================================
+rows = []
+
+for _ in range(N_ROWS):
+    is_fraud = rng.random() < FRAUD_RATIO
+
+    amount = rng.uniform(2000, 120000) if is_fraud else rng.uniform(10, 5000)
+
+    oldbalanceOrg = rng.uniform(0, 200000)
+    newbalanceOrig = (
+        oldbalanceOrg if is_fraud else max(oldbalanceOrg - amount, 0)
+    )
+
+    oldbalanceDest = rng.uniform(0, 100000)
+    newbalanceDest = (
+        oldbalanceDest if is_fraud else oldbalanceDest + amount
+    )
+
+    errorBalanceOrig = oldbalanceOrg - newbalanceOrig - amount
+    errorBalanceDest = oldbalanceDest + amount - newbalanceDest
 
     row = {
-        "amount": np.random.uniform(50000, 150000) if is_fraud_like else np.random.uniform(100, 5000),
-        "hour": np.random.randint(0, 24),
-        "dayofweek": np.random.randint(0, 7),
-        "is_weekend": np.random.choice([0, 1]),
-
-        "rolling_mean_amount": np.random.uniform(10000, 50000),
-        "rolling_std_amount": np.random.uniform(1000, 20000),
-        "cumulative_amount": np.random.uniform(1e5, 1e7),
-
-        "balance_mismatch_rate": 1.0 if is_fraud_like else np.random.uniform(0, 0.1),
-
-        "amt_vs_recent_avg": np.random.uniform(4, 8) if is_fraud_like else np.random.uniform(0.5, 1.5),
-        "txn_velocity_5": np.random.randint(1, 10),
-
-        "errorbalanceorig": np.random.uniform(1e4, 1e6) if is_fraud_like else 0,
-        "errorbalancedest": np.random.uniform(1e4, 1e6) if is_fraud_like else 0,
-
-        "upi_type_upi_payment": 1 if not is_fraud_like else 0,
-        "upi_type_upi_transfer": 1 if is_fraud_like else 0
+        "amount": amount,
+        "oldbalanceOrg": oldbalanceOrg,
+        "newbalanceOrig": newbalanceOrig,
+        "oldbalanceDest": oldbalanceDest,
+        "newbalanceDest": newbalanceDest,
+        "errorBalanceOrig": errorBalanceOrig,
+        "errorBalanceDest": errorBalanceDest,
+        "dayofweek": rng.integers(0, 7),
+        "hour": rng.integers(0, 24),
+        "is_weekend": rng.integers(0, 2),
+        "has_balance_mismatch": int(is_fraud)
     }
 
-    data.append(row)
+    rows.append([row.get(f, 0) for f in FEATURES])
 
-df = pd.DataFrame(data, columns=FEATURES)
+# =====================================================
+# SAVE CSV
+# =====================================================
+df = pd.DataFrame(rows, columns=FEATURES)
+OUTPUT_PATH = os.path.join(BASE_DIR, "data_generation/paysim_demo_final.csv")
+df.to_csv(OUTPUT_PATH, index=False)
 
-df.to_csv("/data_generation/paysim_demo.csv", index=False)
-
-print("✅ PaySim demo CSV generated: paysim_demo.csv")
+print("✅ PaySim demo CSV generated")
+print("📄 Path:", OUTPUT_PATH)
+print("Rows:", len(df))
+print("Approx fraud %:", int(FRAUD_RATIO * 100))

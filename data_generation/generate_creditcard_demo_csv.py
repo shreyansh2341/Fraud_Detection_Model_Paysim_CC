@@ -1,43 +1,49 @@
 import numpy as np
 import pandas as pd
+import joblib
+import os
 
-np.random.seed(42)
+# =====================================================
+# FIX BASE DIRECTORY
+# =====================================================
+BASE_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..")
+)
 
-N_SAMPLES = 20
+FEATURE_PATH = os.path.join(BASE_DIR, "models", "cc_features.pkl")
+cc_features = joblib.load(FEATURE_PATH)
 
-FEATURES = [
-    "v1","v2","v3","v4","v5","v6","v7","v8","v9","v10",
-    "v11","v12","v13","v14","v15","v16","v17","v18","v19","v20",
-    "v21","v22","v23","v24","v25","v26","v27","v28",
-    "amount_scaled",
-    "hour",
-    "dayofweek",
-    "is_weekend"
-]
+# =====================================================
+# CONFIG
+# =====================================================
+N_ROWS = 50
+FRAUD_RATIO = 0.15
 
+rng = np.random.default_rng(123)
+
+# =====================================================
+# DATA GENERATION
+# =====================================================
 data = []
 
-for i in range(N_SAMPLES):
-    is_fraud_like = i % 6 == 0
+for _ in range(N_ROWS):
+    is_fraud = rng.random() < FRAUD_RATIO
 
-    row = {}
-
-    for v in FEATURES:
-        if v.startswith("v"):
-            row[v] = np.random.normal(3, 2) if is_fraud_like else np.random.normal(0, 1)
-        elif v == "amount_scaled":
-            row[v] = np.random.uniform(3, 6) if is_fraud_like else np.random.uniform(-1, 1)
-        elif v == "hour":
-            row[v] = np.random.randint(0, 24)
-        elif v == "dayofweek":
-            row[v] = np.random.randint(0, 7)
-        elif v == "is_weekend":
-            row[v] = np.random.choice([0, 1])
+    row = {
+        f: rng.normal(5, 2) if is_fraud else rng.normal(0, 1)
+        for f in cc_features
+    }
 
     data.append(row)
 
-df = pd.DataFrame(data, columns=FEATURES)
+# =====================================================
+# SAVE CSV
+# =====================================================
+df = pd.DataFrame(data)[cc_features]
+OUTPUT_PATH = os.path.join(BASE_DIR, "data_generation/creditcard_demo_final.csv")
+df.to_csv(OUTPUT_PATH, index=False)
 
-df.to_csv("creditcard_demo.csv", index=False)
-
-print("✅ Credit Card demo CSV generated: creditcard_demo.csv")
+print("✅ Credit Card demo CSV generated")
+print("📄 Path:", OUTPUT_PATH)
+print("Rows:", len(df))
+print("Approx fraud %:", int(FRAUD_RATIO * 100))
